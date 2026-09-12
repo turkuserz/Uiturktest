@@ -97,21 +97,34 @@
             };
 
             const callNative = function(action, params = {}) {
-                return new Promise((resolve) => {
+                return new Promise((resolve, reject) => {
                     const id = ++callbackIdCount;
-                    window.webViewCallbacks[id] = resolve;
-                    const sendMsg = () => {
-                        if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
-                            window.chrome.webview.postMessage({
-                                action: action,
-                                callbackId: id,
-                                ...params
-                            });
-                        } else {
-                            setTimeout(sendMsg, 50);
-                        }
+                    let finished = false;
+                    const finish = (fn, value) => {
+                        if (finished) return;
+                        finished = true;
+                        delete window.webViewCallbacks[id];
+                        fn(value);
                     };
-                    sendMsg();
+                    window.webViewCallbacks[id] = (value) => finish(resolve, value);
+
+                    const webview = window.chrome && window.chrome.webview;
+                    if (!webview || typeof webview.postMessage !== 'function') {
+                        finish(reject, new Error('ไม่พบตัวเชื่อมต่อของโปรแกรม'));
+                        return;
+                    }
+
+                    try {
+                        webview.postMessage({ action, callbackId: id, ...params });
+                    } catch (e) {
+                        finish(reject, e);
+                        return;
+                    }
+
+                    // Never wait forever if the native side does not respond.
+                    setTimeout(() => {
+                        finish(reject, new Error('การตรวจสอบใช้เวลานานเกินไป กรุณาลองใหม่'));
+                    }, 5000);
                 });
             };
 
@@ -1626,14 +1639,15 @@ body:after{display:none!important}.app-container{margin:0!important;width:100vw!
       <div class="login-subtitle">LICENSE AUTHENTICATION</div>
     </div>
 
-    <div class="login-form">
+    <div class="login-form" autocomplete="off">
       <div class="input-group">
         <i class="fa-solid fa-key input-icon"></i>
         <input id="license-key-input"
-               type="text"
+               type="password"
                autocomplete="off"
+               autocapitalize="off"
+               autocorrect="off"
                spellcheck="false"
-               value=""
                maxlength="128"
                placeholder="ใส่ Key"
                aria-label="License key">
@@ -1642,6 +1656,14 @@ body:after{display:none!important}.app-container{margin:0!important;width:100vw!
       <button id="login-submit-btn" class="login-btn" type="button">
         <i class="fa-solid fa-right-to-bracket"></i> LOGIN
       </button>
+      <div class="security-status" aria-label="Security status">
+        <div class="security-title"><i class="fa-solid fa-shield-halved"></i><span>SECURITY CHECK</span><b>ACTIVE</b></div>
+        <div class="security-grid">
+          <span><i class="fa-solid fa-circle-check"></i> Secure session</span>
+          <span><i class="fa-solid fa-circle-check"></i> Anti-tamper UI</span>
+          <span><i class="fa-solid fa-circle-check"></i> Key verification</span>
+        </div>
+      </div>
     </div>
 
     <div class="login-footer">
@@ -2162,6 +2184,14 @@ input:focus,select:focus,textarea:focus,.styled-text-input:focus,.custom-select-
 .login-btn{background:linear-gradient(135deg,#9f7b34,#d6bb79)!important;color:#fff!important;border-radius:11px!important;box-shadow:0 10px 24px rgba(184,149,69,.20)!important}
 .login-btn:hover{background:linear-gradient(135deg,#8f6c2b,#c8a65e)!important;box-shadow:0 13px 28px rgba(184,149,69,.28)!important}
 .login-footer{border-top-color:#ece5d8!important}.login-link{color:#9b8d74!important}.login-link:hover{color:#9d772f!important}
+ .security-status{margin-top:2px;padding:12px 13px;border:1px solid #ebe2d2;border-radius:12px;background:rgba(250,247,240,.78);text-align:left;box-shadow:inset 0 1px 0 rgba(255,255,255,.8)}
+.security-title{display:flex;align-items:center;gap:7px;font-size:9px;letter-spacing:1px;color:#6f6658;font-weight:800}
+.security-title>i{color:#a37b32;font-size:12px}.security-title b{margin-left:auto;font-size:8px;color:#5e8a55;background:#edf5e9;border:1px solid #d8e8d0;padding:3px 7px;border-radius:999px;letter-spacing:.7px}
+.security-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px 10px;margin-top:9px;color:#938a7d;font-size:8.5px}
+.security-grid span:last-child{grid-column:1/-1}.security-grid i{color:#73945f;margin-right:4px}
+#license-key-input{font-family:ui-monospace,SFMono-Regular,Consolas,monospace!important;letter-spacing:2px!important}
+#license-key-input::placeholder{font-family:Arial,'Segoe UI',sans-serif!important;letter-spacing:0!important;color:#aaa093!important}
+.login-btn.is-checking{pointer-events:none}
 
 @media (max-width:900px){.sidebar{width:190px!important;min-width:190px!important}.content-area{padding:14px!important}.app-header:after{display:none}.dashboard-grid{grid-template-columns:1fr!important}}
 
@@ -4414,6 +4444,7 @@ if ($targetGuid) {
         loginInProgress = true;
         if (loginSubmitBtn) {
             loginSubmitBtn.disabled = true;
+            loginSubmitBtn.classList.add('is-checking');
             loginSubmitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> กำลังตรวจสอบ...';
         }
         if (loginErrorMsg) loginErrorMsg.style.display = 'none';
@@ -4431,7 +4462,7 @@ if ($targetGuid) {
             // Never allow the UI to stay on "กำลังตรวจสอบ..." indefinitely.
             const verifyPromise = Promise.resolve().then(() => api.verify_key(raw));
             const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('ตรวจสอบ Key ไม่สำเร็จภายใน 5 วินาที — กรุณาลองใหม่')), 5000);
+                setTimeout(() => reject(new Error('ตรวจสอบไม่เสร็จภายใน 5 วินาที — กรุณาลองใหม่')), 5000);
             });
             const result = await Promise.race([verifyPromise, timeoutPromise]);
 
@@ -4463,6 +4494,7 @@ if ($targetGuid) {
             loginInProgress = false;
             if (loginSubmitBtn) {
                 loginSubmitBtn.disabled = false;
+                loginSubmitBtn.classList.remove('is-checking');
                 loginSubmitBtn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> LOGIN';
             }
         }
@@ -4566,16 +4598,19 @@ document.addEventListener('DOMContentLoaded',()=>{
 
     const input = document.getElementById('license-key-input');
     if (input) {
-      // Always start with an empty field. Prevent Chrome from restoring an old/demo key.
+      // Always begin empty. Never ship a demo/example key and never auto-prefix the user's key.
       input.value = '';
       input.removeAttribute('value');
-      input.addEventListener('input', () => {
-        const raw = input.value;
-        // Keep the visible format predictable without changing the user's characters.
-        if (raw && !raw.startsWith('Turk-') && /^[A-Za-z0-9]{1,}$/.test(raw)) {
-          input.value = 'Turk-' + raw.slice(0, 6);
-        }
-      });
+      input.setAttribute('autocomplete', 'off');
+      input.setAttribute('name', 'license-' + Math.random().toString(36).slice(2));
+      input.setAttribute('data-lpignore', 'true');
+      input.setAttribute('data-form-type', 'other');
+      // Password input keeps the license hidden while typing.
+      const clearIfBrowserRestores = () => {
+        if (!document.activeElement || document.activeElement !== input) input.value = '';
+      };
+      requestAnimationFrame(clearIfBrowserRestores);
+      window.addEventListener('pageshow', clearIfBrowserRestores, {once:false});
     }
   }
   if (document.readyState === 'loading') {

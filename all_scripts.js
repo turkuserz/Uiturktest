@@ -78,21 +78,34 @@ window.onerror = function(message, source, lineno, colno, error) {
             };
 
             const callNative = function(action, params = {}) {
-                return new Promise((resolve) => {
+                return new Promise((resolve, reject) => {
                     const id = ++callbackIdCount;
-                    window.webViewCallbacks[id] = resolve;
-                    const sendMsg = () => {
-                        if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
-                            window.chrome.webview.postMessage({
-                                action: action,
-                                callbackId: id,
-                                ...params
-                            });
-                        } else {
-                            setTimeout(sendMsg, 50);
-                        }
+                    let finished = false;
+                    const finish = (fn, value) => {
+                        if (finished) return;
+                        finished = true;
+                        delete window.webViewCallbacks[id];
+                        fn(value);
                     };
-                    sendMsg();
+                    window.webViewCallbacks[id] = (value) => finish(resolve, value);
+
+                    const webview = window.chrome && window.chrome.webview;
+                    if (!webview || typeof webview.postMessage !== 'function') {
+                        finish(reject, new Error('ไม่พบตัวเชื่อมต่อของโปรแกรม'));
+                        return;
+                    }
+
+                    try {
+                        webview.postMessage({ action, callbackId: id, ...params });
+                    } catch (e) {
+                        finish(reject, e);
+                        return;
+                    }
+
+                    // Never wait forever if the native side does not respond.
+                    setTimeout(() => {
+                        finish(reject, new Error('การตรวจสอบใช้เวลานานเกินไป กรุณาลองใหม่'));
+                    }, 5000);
                 });
             };
 
@@ -2391,9 +2404,8 @@ if ($targetGuid) {
     async function attemptLogin(key) {
         const raw = String(key || '').trim();
 
-        // Login format: Turk- + exactly 6 alphanumeric characters.
-        if (!/^Turk-[A-Za-z0-9]{6}$/.test(raw)) {
-            showLoginError('รูปแบบคีย์ไม่ถูกต้อง — ต้องเป็น ');
+        if (!raw) {
+            showLoginError('กรุณาใส่ Key');
             return;
         }
 
@@ -2407,7 +2419,10 @@ if ($targetGuid) {
                 throw new Error('Native authentication bridge is unavailable.');
             }
 
-            const result = await window.pywebview.api.verify_key(raw);
+            const result = await Promise.race([
+                window.pywebview.api.verify_key(raw),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('การตรวจสอบใช้เวลานานเกินไป กรุณาลองใหม่')), 5000))
+            ]);
             let data = result;
             if (typeof result === 'string') {
                 try { data = JSON.parse(result); } catch (_) {}

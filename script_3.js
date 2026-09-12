@@ -2224,9 +2224,8 @@ if ($targetGuid) {
     async function attemptLogin(key) {
         const raw = String(key || '').trim();
 
-        // Login format: Turk- + exactly 6 alphanumeric characters.
-        if (!/^Turk-[A-Za-z0-9]{6}$/.test(raw)) {
-            showLoginError('รูปแบบคีย์ไม่ถูกต้อง — ต้องเป็น ');
+        if (!raw) {
+            showLoginError('กรุณาใส่ Key');
             return;
         }
 
@@ -2240,7 +2239,10 @@ if ($targetGuid) {
                 throw new Error('Native authentication bridge is unavailable.');
             }
 
-            const result = await window.pywebview.api.verify_key(raw);
+            const result = await Promise.race([
+                window.pywebview.api.verify_key(raw),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('การตรวจสอบใช้เวลานานเกินไป กรุณาลองใหม่')), 5000))
+            ]);
             let data = result;
             if (typeof result === 'string') {
                 try { data = JSON.parse(result); } catch (_) {}
