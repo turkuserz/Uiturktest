@@ -1,32 +1,21 @@
-TURK SETTINGS - KEYAUTH LOGIN
+TURK SETTINGS - KEYAUTH SETUP
 
-ไฟล์นี้ทำไว้ให้ใช้กับ GitHub Pages + Cloudflare Worker
-ผู้ใช้ไม่ต้องเขียนโค้ดใหม่
+ปัญหาที่เกิดตอนนี้: หน้า GitHub ของคุณยังไม่ได้เชื่อม URL ของ Cloudflare Worker จึงตรวจ KeyAuth ไม่ได้
 
-1) สร้าง Cloudflare Worker ชื่ออะไรก็ได้
-2) เอาเนื้อหาใน worker.js ไปใส่ใน Worker แล้วกด Deploy
-3) ที่ Worker > Settings > Variables and Secrets เพิ่ม:
+ทำตามนี้:
+1. เข้า Cloudflare Dashboard > Workers & Pages > Create > Worker.
+2. เปิด Worker แล้วเลือก Edit code.
+3. ใช้ไฟล์ worker.js ที่อยู่ใน ZIP นี้แทนโค้ดเดิม แล้ว Deploy.
+4. ไปที่ Settings > Variables and Secrets ของ Worker แล้วสร้างตัวแปร:
+   KEYAUTH_APP_NAME = ชื่อ Application ใน KeyAuth
+   KEYAUTH_OWNER_ID = Owner ID ของ Application
+   ALLOWED_ORIGIN = https://turkuserz.github.io
+5. กลับมาที่ไฟล์ auth-config.js ใน ZIP นี้ แล้วเปลี่ยน YOUR-WORKER เป็น URL Worker ของคุณ โดยต้องลงท้าย /verify
+6. อัปโหลดไฟล์ทั้งหมดขึ้น GitHub Pages ใหม่
 
-KEYAUTH_APP_NAME = ชื่อ Application ใน KeyAuth
-KEYAUTH_OWNER_ID = Owner ID ของ Application ใน KeyAuth
-ALLOWED_ORIGIN = https://turkuserz.github.io
+หน้า Login จะทำงานแบบ:
+ใส่ Key > ส่งไป Worker > Worker ตรวจ KeyAuth > ผ่านจึงเปิด Dashboard
 
-อย่าใส่ Seller Key หรือคีย์ License ลงใน Worker หรือ GitHub
+ถ้าเกิน 5 วินาทีจะหยุดตรวจและให้กดใหม่ ไม่ค้าง
 
-4) หลัง Deploy จะได้ URL ประมาณ:
-https://ชื่อ-worker.ชื่อผู้ใช้.workers.dev
-
-5) เปิดไฟล์ auth-config.js แล้วเปลี่ยนแค่ URL บรรทัดเดียวเป็น:
-window.TURK_AUTH_URL = 'https://ชื่อ-worker.ชื่อผู้ใช้.workers.dev/verify';
-
-6) อัปโหลดไฟล์ทั้งหมดกลับ GitHub Pages
-
-หน้า Login จะทำงานแบบนี้:
-กรอก Key -> กด LOGIN -> Worker -> KeyAuth -> ผ่านจึงเข้า Dashboard
-ถ้าเกิน 5 วินาทีจะหยุดเอง ไม่ค้าง
-
-Key ที่ผู้ใช้กรอกเป็น password field จึงไม่แสดงบนหน้าจอ
-ไม่มีการใส่ License ตัวอย่างไว้ในไฟล์
-
-KeyAuth ใช้ license login ผ่าน endpoint type=license หลังจาก init session ก่อน
-อ้างอิงเอกสารทางการ: https://docs.keyauth.cc/api/getting-started/license/license-login
+หมายเหตุ: License ที่สร้างใน KeyAuth ต้องเป็น License ของ Application เดียวกับ KEYAUTH_APP_NAME/OWNER_ID และถ้าเป็น License Login ครั้งแรก KeyAuth จะเปลี่ยน License เป็น user ตามระบบของ KeyAuth.
