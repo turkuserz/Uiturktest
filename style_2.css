@@ -1,0 +1,19 @@
+/*
+// ==========================================
+// Credit: DIRECT STORE
+// Discord: discord.gg/w4nTsbcCJG
+// Website: https://direct-synex.pages.dev/
+// ==========================================
+*/
+@keyframes loader-spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            @keyframes loader-spin-reverse {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(-360deg); }
+            }
+            @keyframes loader-pulse {
+                0%, 100% { opacity: 0.6; }
+                50% { opacity: 1; }
+            }
