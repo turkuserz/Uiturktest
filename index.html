@@ -9,6 +9,7 @@
 
 <html lang="en">
 <head>
+<script src="auth-config.js"></script>
 <script>
 // ==========================================
 // TURK SETTINGS
@@ -4433,11 +4434,16 @@ if ($targetGuid) {
 
     async function attemptLogin(key) {
         if (loginInProgress) return;
-        const raw = String(key || '').trim();
 
-        // Accept normal KeyAuth license strings without hard-coding or displaying any key.
-        if (!/^[A-Za-z0-9][A-Za-z0-9_-]{5,127}$/.test(raw)) {
-            showLoginError('กรุณาใส่ Key ให้ถูกต้อง');
+        const raw = String(key || '').trim();
+        if (!raw) {
+            showLoginError('กรุณาใส่ Key');
+            return;
+        }
+
+        const authUrl = window.TURK_AUTH_URL;
+        if (!authUrl || authUrl.includes('YOUR-WORKER')) {
+            showLoginError('ระบบยืนยันตัวตนยังไม่ได้ตั้งค่า');
             return;
         }
 
@@ -4449,38 +4455,26 @@ if ($targetGuid) {
         }
         if (loginErrorMsg) loginErrorMsg.style.display = 'none';
 
-        const fail = (message) => {
-            throw new Error(message || 'ตรวจสอบ Key ไม่สำเร็จ');
-        };
+        const clientId = getBrowserId();
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5000);
 
         try {
-            const api = window.pywebview?.api;
-            if (!api || typeof api.verify_key !== 'function') {
-                fail('ไม่พบตัวตรวจสอบ Key — กรุณาเปิดผ่านโปรแกรม TURK Settings');
-            }
-
-            // Never allow the UI to stay on "กำลังตรวจสอบ..." indefinitely.
-            const verifyPromise = Promise.resolve().then(() => api.verify_key(raw));
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('ตรวจสอบไม่เสร็จภายใน 5 วินาที — กรุณาลองใหม่')), 5000);
+            const response = await fetch(authUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: raw, clientId }),
+                signal: controller.signal
             });
-            const result = await Promise.race([verifyPromise, timeoutPromise]);
 
-            let data = result;
-            if (typeof result === 'string') {
-                try { data = JSON.parse(result); } catch (_) {}
+            let data = null;
+            try { data = await response.json(); } catch (_) {}
+
+            if (!response.ok || !data?.success) {
+                throw new Error(data?.message || 'Key ไม่ถูกต้อง หรือ Key หมดอายุ');
             }
 
-            const ok = data === true ||
-                data === 'true' ||
-                data?.success === true ||
-                data?.valid === true ||
-                data?.status === 'success';
-
-            if (!ok) {
-                fail(data?.message || 'Key ไม่ถูกต้อง หรือ Key หมดอายุ');
-            }
-
+            sessionStorage.setItem('turk_auth', '1');
             if (loginScreen) loginScreen.style.display = 'none';
             if (mainApp) mainApp.style.display = 'flex';
             if (typeof resizeCanvas === 'function') resizeCanvas();
@@ -4489,8 +4483,13 @@ if ($targetGuid) {
             if (typeof loadFivemSettings === 'function') loadFivemSettings();
             if (typeof loadMotherboardId === 'function') loadMotherboardId();
         } catch (err) {
-            showLoginError(err?.message || 'เข้าสู่ระบบไม่สำเร็จ');
+            if (err?.name === 'AbortError') {
+                showLoginError('ตรวจสอบไม่เสร็จภายใน 5 วินาที กรุณาลองใหม่');
+            } else {
+                showLoginError(err?.message || 'เข้าสู่ระบบไม่สำเร็จ');
+            }
         } finally {
+            clearTimeout(timer);
             loginInProgress = false;
             if (loginSubmitBtn) {
                 loginSubmitBtn.disabled = false;
@@ -4498,6 +4497,16 @@ if ($targetGuid) {
                 loginSubmitBtn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> LOGIN';
             }
         }
+    }
+
+    function getBrowserId() {
+        const name = 'turk_device_id';
+        let id = localStorage.getItem(name);
+        if (!id) {
+            id = 'web-' + crypto.randomUUID();
+            localStorage.setItem(name, id);
+        }
+        return id;
     }
 
     function showLoginError(msg) {
