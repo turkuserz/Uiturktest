@@ -1,3 +1,3 @@
 // TURK authentication endpoint
-// Put your deployed Cloudflare Worker URL here.
-window.TURK_AUTH_URL = 'https://YOUR-WORKER.workers.dev/verify';
+// Deployed Cloudflare Worker
+window.TURK_AUTH_URL = 'https://turk-auth.darielwellesley.workers.dev/verify';
